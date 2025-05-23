@@ -72,13 +72,16 @@ def generate_data(agent: BaseAlgorithm, env: gym.Env,
     actions_test = actions_all[n_train:]
     y_test = labels_all[n_train:]
 
+
     scaler = StandardScaler()
 
     if isinstance(env.action_space, Discrete):
         transitions_train_scaled = scaler.fit_transform(transitions_train)
         transitions_test_scaled = scaler.transform(transitions_test)
-        X_train = np.concatenate([transitions_train_scaled, actions_train], axis=-1)
-        X_test = np.concatenate([transitions_test_scaled, actions_test], axis=-1)
+        X_train = np.concatenate([transitions_train_scaled, 
+                                  actions_train.reshape(-1,1)], axis=-1)
+        X_test = np.concatenate([transitions_test_scaled, 
+                                 actions_test.reshape(-1,1)], axis=-1)
 
     else:
         X_train = np.concatenate([transitions_train, actions_train], axis=-1)
