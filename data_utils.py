@@ -4,11 +4,13 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 
 from sklearn.preprocessing import StandardScaler
+from stable_baselines3 import PPO, SAC, DQN
 
 import gymnasium as gym
 from gymnasium.spaces import Discrete, Box
 
 from stable_baselines3.common.base_class import BaseAlgorithm
+
 
 
 def generate_data(agent: BaseAlgorithm, env: gym.Env,
@@ -106,4 +108,13 @@ def generate_data(agent: BaseAlgorithm, env: gym.Env,
 
 
 
+
+if __name__ == "__main__":
+    env = gym.make("CartPole-v1")
+    agent = DQN.load("./agents/dqn-cartpole")
+    scaler, train_loader, test_loader = generate_data(agent, env) 
+    
+    env = gym.make("Hopper-v5")
+    agent = PPO.load("./agents/ppo-hopper")
+    scaler, train_loader, test_loader = generate_data(agent, env) 
 
