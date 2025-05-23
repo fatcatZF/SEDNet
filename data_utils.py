@@ -14,7 +14,8 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 
 def generate_data(agent: BaseAlgorithm, env: gym.Env,
-                  total_steps: int = 20000):
+                  total_steps: int = 20000, 
+                  use_drift_rate: bool = True, noise_scale = 0.005):
     actions = []
     actions_drift = []
     transitions = []
@@ -38,8 +39,12 @@ def generate_data(agent: BaseAlgorithm, env: gym.Env,
 
         # synthetic drifted example
         obs_prime = env.observation_space.sample()
-        drift_rate = np.random.uniform(low=0.0, high=0.05)
-        obs_tplus1_prime = (1-drift_rate)*obs_tplus1 + drift_rate*obs_prime + np.random.normal(scale=0.005,
+        if use_drift_rate:
+           drift_rate = np.random.uniform(low=0.0, high=0.05)
+        else:
+            assert noise_scale > 0 # Only use noise
+            drift_rate = 0.0
+        obs_tplus1_prime = (1-drift_rate)*obs_tplus1 + drift_rate*obs_prime + np.random.normal(scale=noise_scale,
                                                                                            size=obs_t.shape)
         
         transitions_drift.append(np.concatenate([obs_t, obs_tplus1_prime-obs_t]))
