@@ -31,6 +31,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, default="cartpole", help="name of environment")
     parser.add_argument("--policy-type", type=str, default="dqn", help="type of rl policy")
+    parser.add_argument("--only-drift-rate", action="store_true", help="Only use drift rates.")
+    parser.add_argument("--only-noise", action="store_true", help="Only use normal noise")
     parser.add_argument("--env-steps", type=int, default=20000, help="Steps of running training environment")
     parser.add_argument("--epochs", type=int, default=100, help="training epochs")
     
@@ -46,7 +48,7 @@ def main():
       "cartpole" : "CartPole-v1",
       "lunarlander": "LunarLander-v3",
       "hopper": "Hopper-v5",
-      "halfcheetah": "HalfCheetah-v3",
+      "halfcheetah": "HalfCheetah-v5",
       "humanoid": "Humanoid-v5"
     }
 
@@ -97,28 +99,51 @@ def main():
 
     os.makedirs(model_folder, exist_ok=True)
 
-    pattern = "single*"
+ 
+    if args.only_drift_rate:
+        pattern = "single_drift_[0-9]"
+    elif args.only_noise:
+        pattern = "single_noise_[0-9]"
+    else:
+        pattern = "single_[0-9]"
+
+    
 
     # List and filter matching subdirectories
-    matching_dirs = [
+    matching_dirs = [       
         name for name in os.listdir(model_folder)
         if os.path.isdir(os.path.join(model_folder, name)) and fnmatch.fnmatch(name, pattern)
     ]
 
     number_of_trained = len(matching_dirs)
 
-    save_folder_name = os.path.join(model_folder, f"single{number_of_trained}")
+    
+
+    if args.only_drift_rate:
+        save_folder_name = os.path.join(model_folder, f"single_drift_{number_of_trained}")
+        use_drift_rate = True 
+        noise_scale = 0.0
+    elif args.only_noise:
+        save_folder_name = os.path.join(model_folder, f"single_noise_{number_of_trained}")
+        use_drift_rate = False 
+        noise_scale = 0.005
+    else:
+        save_folder_name = os.path.join(model_folder, f"single_{number_of_trained}")
+        use_drift_rate = True
+        noise_scale = 0.005
     os.makedirs(save_folder_name)
+
+    
 
     scaler_path = os.path.join(save_folder_name, "scaler.joblib")
     model_path = os.path.join(save_folder_name, "model.pth")
 
     env = gym.make(env_dict[args.env])
 
-    scaler, train_loader, test_loader = generate_data(agent, env)
+    scaler, train_loader, test_loader = generate_data(agent, env, use_drift_rate=use_drift_rate,
+                                                      noise_scale=noise_scale)
 
     joblib.dump(scaler, scaler_path) # save the scaler 
-
     discrete_action = env_action_discrete[args.env]
     if discrete_action:
         num_actions = env.action_space.n

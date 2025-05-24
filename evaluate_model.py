@@ -1,10 +1,15 @@
 import numpy as np
 from collections import deque
 
+import gymnasium as gym 
+
 
 from sklearn.metrics import roc_auc_score
 
 from stable_baselines3 import PPO, SAC, DQN 
+
+import torch 
+import joblib
 
 import os 
 import glob 
@@ -13,6 +18,8 @@ import json
 from datetime import datetime 
 
 from environment_util import make_env 
+
+from drift_detectors import MLPDriftDetector
 
 
 
@@ -48,6 +55,40 @@ def main():
     print("Parsed arguments: ")
     print(args) 
 
+    env_dict = {
+      "cartpole" : "CartPole-v1",
+      "lunarlander": "LunarLander-v3",
+      "hopper": "Hopper-v5",
+      "halfcheetah": "HalfCheetah-v5",
+      "humanoid": "Humanoid-v5"
+    }
+
+    # Load trained Agent
+    if (args.policy_type=="dqn"):
+        AGENT = DQN 
+    elif (args.policy_type=="ppo"):
+        AGENT = PPO 
+    else:
+        AGENT = SAC 
+
+    policy_env_name = args.policy_type + '-' + args.env
+
+    agent_path = os.path.join('./agents/', policy_env_name)
+    agent = AGENT.load(agent_path) 
+    print("Successfully Load Trained Agent.")
+
+    env = gym.make(env_dict[args.env])
+
+
+    env_action_discrete = {
+        "cartpole": True,
+        "lunarlander": True,
+        "hopper": False,
+        "halfcheetah": False,
+        "humanoid": False
+    }
+
+
     model_folder = os.path.join("trained_models", args.policy_type+'-'+args.env)
     if args.model_type == "single":
         pattern = "single_[0-9]"
@@ -58,7 +99,15 @@ def main():
     else:
         pattern = "ensemble_[0-9]"
 
+    
 
+    discrete_action = env_action_discrete[args.env]
+    if discrete_action:
+        num_actions = env.action_space.n
+        action_embed_dim = int(min(50, (num_actions**0.25)*4))
+    else:
+        num_actions = env.action_space.sample().shape[-1]
+        action_embed_dim = None
     
     # Load Drift Detector Models
     loaded_models = []
@@ -69,9 +118,166 @@ def main():
     print(matching_models) 
     if len(matching_models)==0:
         raise NotImplementedError(f"There is no trained model for the environment {args.env}.")
+    
+
+    for model_path in matching_models:
+        model = MLPDriftDetector(
+            obs_dim = env.observation_space.sample().shape[-1],
+            num_actions = num_actions,
+            discrete_action = discrete_action,
+            hidden_dim = 256,
+            action_embed_dim = action_embed_dim
+        )
+        model = torch.load(os.path.join(model_path, "model.pth"), 
+                           weights_only=False)
+        scaler = joblib.load(os.path.join(model_path, "scaler.joblib"))
+
+        loaded_models.append({"model":model, "scaler":scaler})
+
+    print(f"Number of trained models: {len(loaded_models)}")
+
+    ## Create environments
+    env0, env1, env2, env3 = make_env(name=args.env)
+    print("Successfully create environments")
 
 
+    result = dict()
+    #for i in range(len(loaded_models)):
+    #    result[f"{args.model_type}_{i}"] = dict()      
+    ## Run the evaluations
+    auc_semantic_values = []
+    auc_noise_values = []
+ 
+    for i, model in enumerate(loaded_models):
+            for j in range(args.n_exp_per_model):
 
+                # Validation
+                scores_val = []
+                env_current = env0
+                obs_t, _ = env_current.reset()
+                for t in range(args.env0_steps):
+                    action_t, _states = agent.predict(obs_t, deterministic=True)
+                    obs_tplus1, r_tplus1, terminated, truncated, info = env0.step(action_t)
+                    done = terminated or truncated
+                    transition = np.concatenate([obs_t, obs_tplus1-obs_t], axis=-1)
+                    transition = transition.reshape(1, -1)
+                    if discrete_action:
+                        transition = model["scaler"].transform(transition)
+                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
+                        x_tensor = torch.from_numpy(x).float()
+                    else:
+                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
+                        x = model["scaler"].transform(x)
+                        x_tensor = torch.from_numpy(x).float()
+                    
+                    with torch.no_grad():
+                        model["model"].eval()
+                        y_predict = torch.sigmoid(model["model"](x_tensor))[0].detach().item()
+                    scores_val.append(y_predict)
+
+                    obs_t = obs_tplus1
+                    if done:
+                        obs_t, _ = env_current.reset()
+
+
+                mu_val = np.mean(scores_val)
+                std_val = np.std(scores_val)
+
+                
+                # Semantic Drift
+                scores_sem = []
+                env_current = env1 
+                obs_t, _ = env_current.reset()
+                total_steps = args.env1_steps + args.env2_steps
+                for t in range(1, total_steps+1):
+                    action_t, _state = agent.predict(obs_t, deterministic=True)
+                    obs_tplus1, r_tplus1, terminated, truncated, info = env_current.step(action_t)
+                    done = terminated or truncated
+                    transition = np.concatenate([obs_t, obs_tplus1-obs_t], axis=-1)
+                    transition = transition.reshape(1, -1)
+                    if discrete_action:
+                        transition = model["scaler"].transform(transition)
+                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
+                        x_tensor = torch.from_numpy(x).float()
+                    else:
+                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
+                        x = model["scaler"].transform(x)
+                        x_tensor = torch.from_numpy(x).float()
+                    
+                    with torch.no_grad():
+                        model["model"].eval()
+                        y_predict = torch.sigmoid(model["model"](x_tensor))[0].detach().item()
+                    scores_sem.append((y_predict-mu_val)/(std_val+1e-6))
+
+                    obs_t = obs_tplus1
+                    if done:
+                        obs_t, _ = env_current.reset()
+                    if t==args.env1_steps:
+                        env_current = env2 
+                        obs_t, _ = env_current.reset()
+                
+                
+                y_env1 = np.zeros(args.env1_steps)
+                y_env2 = np.ones(args.env2_steps)
+                y = np.concatenate([y_env1, y_env2])
+                auc_semantic = roc_auc_score(y, scores_sem)
+                auc_semantic_values.append(auc_semantic)
+                
+
+                # Noise Drift
+                scores_noise = []
+                env_current = env1 
+                obs_t, _ = env_current.reset()
+                total_steps = args.env1_steps + args.env3_steps
+                for t in range(1, total_steps+1):
+                    action_t, _state = agent.predict(obs_t, deterministic=True)
+                    obs_tplus1, r_tplus1, terminated, truncated, info = env_current.step(action_t)
+                    done = terminated or truncated
+                    transition = np.concatenate([obs_t, obs_tplus1-obs_t], axis=-1)
+                    transition = transition.reshape(1,-1)
+                    if discrete_action:
+                        transition = model["scaler"].transform(transition)
+                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
+                        x_tensor = torch.from_numpy(x).float()
+                    else:
+                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
+                        x = model["scaler"].transform(x)
+                        x_tensor = torch.from_numpy(x).float()
+                    
+                    with torch.no_grad():
+                        model["model"].eval()
+                        y_predict = torch.sigmoid(model["model"](x_tensor))[0].detach().item()
+                    scores_noise.append((y_predict-mu_val)/(std_val+1e-6))
+
+                    obs_t = obs_tplus1
+                    if done:
+                        obs_t, _ = env_current.reset()
+                    if t==args.env1_steps:
+                        env_current = env3
+                        obs_t, _ = env_current.reset()
+
+
+                y_env1 = np.zeros(args.env1_steps)
+                y_env3 = np.ones(args.env3_steps)
+                y = np.concatenate([y_env1, y_env3])
+                auc_noise = roc_auc_score(y, scores_noise)
+                auc_noise_values.append(auc_noise)
+
+    result["auc_semantic_mean"] = np.mean(auc_semantic_values)
+    result["auc_noise_mean"] = np.mean(auc_noise_values)
+
+    result_folder = os.path.join("./results", args.env)
+    if not os.path.exists(result_folder):
+        os.makedirs(result_folder) 
+    print("results folder", result_folder)
+    result_file = f"{args.model_type}-{args.env}.json"
+    print("result file: ", result_file)
+
+    result_path = os.path.join(result_folder, result_file)
+    print("result path: ", result_path) 
+
+    with open(result_path, 'w') as f:
+        json.dump(result, f, separators=(',', ':'))
 
 
 if __name__ == "__main__":
