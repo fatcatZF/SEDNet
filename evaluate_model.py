@@ -47,3 +47,32 @@ def main():
 
     print("Parsed arguments: ")
     print(args) 
+
+    model_folder = os.path.join("trained_models", args.policy_type+'-'+args.env)
+    if args.model_type == "single":
+        pattern = "single_[0-9]"
+    elif args.model_type == "single_noise":
+        pattern = "single_noise_[0-9]"
+    elif args.model_type == "single_drift":
+        pattern = "single_drift_[0-9]"
+    else:
+        pattern = "ensemble_[0-9]"
+
+
+    
+    # Load Drift Detector Models
+    loaded_models = []
+    model_pattern = os.path.join(model_folder, pattern)
+    print(model_pattern)
+    matching_models = glob.glob(model_pattern)
+
+    print(matching_models) 
+    if len(matching_models)==0:
+        raise NotImplementedError(f"There is no trained model for the environment {args.env}.")
+
+
+
+
+
+if __name__ == "__main__":
+    main()
