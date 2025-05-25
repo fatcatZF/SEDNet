@@ -52,13 +52,13 @@ def main():
       "humanoid": "Humanoid-v5"
     }
 
-    env_agent_dict = {
-      "cartpole" : "dqn-cartpole",
-      "lunarlander": "ppo-lunarlander",
-      "hopper": "ppo-hopper",
-      "halfcheetah": "sac-halfcheetah",
-      "humanoid": "sac-humanoid"
-    }
+    #env_agent_dict = {
+    #  "cartpole" : "dqn-cartpole",
+    #  "lunarlander": "ppo-lunarlander",
+    #  "hopper": "ppo-hopper",
+    #  "halfcheetah": "sac-halfcheetah",
+    #  "humanoid": "sac-humanoid"
+    #}
     
     
     env_action_discrete = {

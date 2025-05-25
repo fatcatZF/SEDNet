@@ -19,7 +19,8 @@ from datetime import datetime
 
 from environment_util import make_env 
 
-from drift_detectors import MLPDriftDetector
+#from drift_detectors import MLPDriftDetector
+from compose_ensemble import EnsembleMLPDriftDetector
 
 
 
@@ -32,7 +33,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, default="cartpole", help="name of environment")
     parser.add_argument("--policy-type", type=str, default="dqn", help="type of rl policy")
-    parser.add_argument("--model-type", type=str, default="single", help="type of drift detector models")
     parser.add_argument("--env0-steps", type=int, default=1000, help="Validation Steps")
     parser.add_argument("--env1-steps", type=int, default=3000, help="Undrifted Steps")
     parser.add_argument("--env2-steps", type=int, default=3000, help="Semantic Drift Steps")
@@ -88,16 +88,8 @@ def main():
         "humanoid": False
     }
 
-
     model_folder = os.path.join("trained_models", args.policy_type+'-'+args.env)
-    if args.model_type == "single":
-        pattern = "single_[0-9]"
-    elif args.model_type == "single_noise":
-        pattern = "single_noise_[0-9]"
-    elif args.model_type == "single_drift":
-        pattern = "single_drift_[0-9]"
-    else:
-        pattern = "ensemble_[0-9]"
+    pattern = "ensemble_[0-9].pth"
 
     
 
@@ -121,18 +113,10 @@ def main():
     
 
     for model_path in matching_models:
-        model = MLPDriftDetector(
-            obs_dim = env.observation_space.sample().shape[-1],
-            num_actions = num_actions,
-            discrete_action = discrete_action,
-            hidden_dim = 256,
-            action_embed_dim = action_embed_dim
-        )
-        model = torch.load(os.path.join(model_path, "model.pth"), 
-                           weights_only=False)
-        scaler = joblib.load(os.path.join(model_path, "scaler.joblib"))
-
-        loaded_models.append({"model":model, "scaler":scaler})
+        model = torch.load(model_path, weights_only=False)
+        #print(model.models[0]["mu"])
+        #print(model.models[0]["std"])
+        loaded_models.append(model)
 
     print(f"Number of trained models: {len(loaded_models)}")
 
@@ -174,21 +158,14 @@ def main():
                     action_t, _states = agent.predict(obs_t, deterministic=True)
                     obs_tplus1, r_tplus1, terminated, truncated, info = env_current.step(action_t)
                     done = terminated or truncated
+
                     transition = np.concatenate([obs_t, obs_tplus1-obs_t], axis=-1)
                     transition = transition.reshape(1, -1)
-                    if discrete_action:
-                        transition = model["scaler"].transform(transition)
-                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
-                        x_tensor = torch.from_numpy(x).float()
-                    else:
-                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
-                        x = model["scaler"].transform(x)
-                        x_tensor = torch.from_numpy(x).float()
+                
+                    x = np.concatenate([transition, action_t.reshape(1, -1)], axis=-1)
+                    x = torch.from_numpy(x).float()
                     
-                    with torch.no_grad():
-                        model["model"].eval()
-                        y_predict = torch.sigmoid(model["model"](x_tensor))[0].detach().item()
-                    scores_val.append(y_predict)
+                    scores_val.append(model(x))
 
                     obs_t = obs_tplus1
                     if done:
@@ -198,6 +175,9 @@ def main():
                 mu_val = np.mean(scores_val)
                 std_val = np.std(scores_val)
 
+                #print("mu: ", mu_val)
+                #print("std: ", std_val)
+
                 
                 # Semantic Drift
                 scores_sem = []
@@ -205,24 +185,14 @@ def main():
                 obs_t, _ = env_current.reset()
                 total_steps = args.env1_steps + args.env2_steps
                 for t in range(1, total_steps+1):
-                    action_t, _state = agent.predict(obs_t, deterministic=True)
+                    action_t, _states = agent.predict(obs_t, deterministic=True)
                     obs_tplus1, r_tplus1, terminated, truncated, info = env_current.step(action_t)
                     done = terminated or truncated
                     transition = np.concatenate([obs_t, obs_tplus1-obs_t], axis=-1)
                     transition = transition.reshape(1, -1)
-                    if discrete_action:
-                        transition = model["scaler"].transform(transition)
-                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
-                        x_tensor = torch.from_numpy(x).float()
-                    else:
-                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
-                        x = model["scaler"].transform(x)
-                        x_tensor = torch.from_numpy(x).float()
-                    
-                    with torch.no_grad():
-                        model["model"].eval()
-                        y_predict = torch.sigmoid(model["model"](x_tensor))[0].detach().item()
-                    scores_sem.append((y_predict-mu_val)/(std_val+1e-6))
+                    x = np.concatenate([transition, action_t.reshape(1, -1)], axis=-1)
+                    x = torch.from_numpy(x).float()
+                    scores_sem.append((model(x)-mu_val)/(std_val+1e-6))
 
                     obs_t = obs_tplus1
                     if done:
@@ -297,24 +267,14 @@ def main():
                 obs_t, _ = env_current.reset()
                 total_steps = args.env1_steps + args.env3_steps
                 for t in range(1, total_steps+1):
-                    action_t, _state = agent.predict(obs_t, deterministic=True)
+                    action_t, _states = agent.predict(obs_t, deterministic=True)
                     obs_tplus1, r_tplus1, terminated, truncated, info = env_current.step(action_t)
                     done = terminated or truncated
                     transition = np.concatenate([obs_t, obs_tplus1-obs_t], axis=-1)
-                    transition = transition.reshape(1,-1)
-                    if discrete_action:
-                        transition = model["scaler"].transform(transition)
-                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
-                        x_tensor = torch.from_numpy(x).float()
-                    else:
-                        x = np.concatenate([transition, action_t.reshape(1,-1)], axis=-1)
-                        x = model["scaler"].transform(x)
-                        x_tensor = torch.from_numpy(x).float()
-                    
-                    with torch.no_grad():
-                        model["model"].eval()
-                        y_predict = torch.sigmoid(model["model"](x_tensor))[0].detach().item()
-                    scores_noise.append((y_predict-mu_val)/(std_val+1e-6))
+                    transition = transition.reshape(1, -1)
+                    x = np.concatenate([transition, action_t.reshape(1, -1)], axis=-1)
+                    x = torch.from_numpy(x).float()
+                    scores_noise.append((model(x)-mu_val)/(std_val+1e-6))
 
                     obs_t = obs_tplus1
                     if done:
@@ -410,7 +370,7 @@ def main():
     if not os.path.exists(result_folder):
         os.makedirs(result_folder) 
     print("results folder", result_folder)
-    result_file = f"{args.model_type}-{args.env}.json"
+    result_file = f"ensemble-{args.env}.json"
     print("result file: ", result_file)
 
     result_path = os.path.join(result_folder, result_file)
