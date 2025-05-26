@@ -39,30 +39,25 @@ def main():
     args = parser.parse_args()
 
 
-    allowed_envs = {"cartpole", "lunarlander", "hopper", 
+    allowed_envs = {"cartpole", "mountaincar", "lunarlander", "hopper", 
                     "halfcheetah", "humanoid"}
     
     allowed_policy_types = {"dqn", "ppo", "sac"}
 
     env_dict = {
       "cartpole" : "CartPole-v1",
+      "mountaincar": "MountainCar-v0",
       "lunarlander": "LunarLander-v3",
       "hopper": "Hopper-v5",
       "halfcheetah": "HalfCheetah-v5",
       "humanoid": "Humanoid-v5"
     }
 
-    #env_agent_dict = {
-    #  "cartpole" : "dqn-cartpole",
-    #  "lunarlander": "ppo-lunarlander",
-    #  "hopper": "ppo-hopper",
-    #  "halfcheetah": "sac-halfcheetah",
-    #  "humanoid": "sac-humanoid"
-    #}
     
     
     env_action_discrete = {
         "cartpole": True,
+        "mountaincar": True,
         "lunarlander": True,
         "hopper": False,
         "halfcheetah": False,

@@ -4,6 +4,7 @@ import math
 import gymnasium as gym
 from gymnasium import Wrapper 
 from gymnasium.envs.classic_control.cartpole import CartPoleEnv 
+from gymnasium.envs.classic_control.mountain_car import MountainCarEnv
 from gymnasium.wrappers import TransformReward, TransformObservation, TransformAction
 
 from typing import Optional
@@ -42,6 +43,23 @@ def make_cartpole():
                                             env1.observation_space))
 
     return env0, env1, env2, env3   
+
+def make_mountaincar():
+   class MountainCarEnvDrifted(MountainCarEnv):
+      def __init__(self, force=0.001-(4e-5)):
+        super().__init__()
+        self.force = force
+   gym.register("MountainCarDrifted-v0",
+             MountainCarEnvDrifted,
+             max_episode_steps=200)
+   env0 = gym.make("MountainCar-v0")
+   env1 = gym.make("MountainCar-v0")
+   env2 = gym.make("MountainCarDrifted-v0", force=0.001-(4e-5))
+   env3 = TransformObservation(env0,
+                            lambda obs: obs + 0.001 * np.random.random(obs.shape),
+                            env0.observation_space)
+   return env0, env1, env2, env3 
+
 
 
 def make_lunarlander():
@@ -113,6 +131,9 @@ def make_env(name="cartpole"):
     
     elif (name=="humanoid"):
        env0, env1, env2, env3 = make_humanoid()
+   
+    elif (name=="mountaincar"):
+       env0, env1, env2, env3 = make_mountaincar()
 
     else:
        print(f"The environment {name} has not been implemented.")

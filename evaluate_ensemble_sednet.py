@@ -57,6 +57,7 @@ def main():
 
     env_dict = {
       "cartpole" : "CartPole-v1",
+      "mountaincar": "MountainCar-v0",
       "lunarlander": "LunarLander-v3",
       "hopper": "Hopper-v5",
       "halfcheetah": "HalfCheetah-v5",
@@ -82,6 +83,7 @@ def main():
 
     env_action_discrete = {
         "cartpole": True,
+        "mountaincar": True,
         "lunarlander": True,
         "hopper": False,
         "halfcheetah": False,
