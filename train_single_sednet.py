@@ -16,7 +16,7 @@ from datetime import datetime
 
 import joblib
 
-from data_utils import generate_data
+from data_utils import generate_data_sednet
 from drift_detectors import MLPDriftDetector
 
 
@@ -140,7 +140,7 @@ def main():
 
     env = gym.make(env_dict[args.env])
 
-    scaler, train_loader, test_loader = generate_data(agent, env, use_drift_rate=use_drift_rate,
+    scaler, train_loader, test_loader = generate_data_sednet(agent, env, use_drift_rate=use_drift_rate,
                                                       noise_scale=noise_scale)
 
     joblib.dump(scaler, scaler_path) # save the scaler 
