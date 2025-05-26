@@ -13,7 +13,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 
 
-def generate_data(agent: BaseAlgorithm, env: gym.Env,
+def generate_data_sednet(agent: BaseAlgorithm, env: gym.Env,
                   total_steps: int = 20000, 
                   use_drift_rate: bool = True, noise_scale = 0.005):
     actions = []
@@ -117,9 +117,9 @@ def generate_data(agent: BaseAlgorithm, env: gym.Env,
 if __name__ == "__main__":
     env = gym.make("CartPole-v1")
     agent = DQN.load("./agents/dqn-cartpole")
-    scaler, train_loader, test_loader = generate_data(agent, env) 
+    scaler, train_loader, test_loader = generate_data_sednet(agent, env) 
     
     env = gym.make("Hopper-v5")
     agent = PPO.load("./agents/ppo-hopper")
-    scaler, train_loader, test_loader = generate_data(agent, env) 
+    scaler, train_loader, test_loader = generate_data_sednet(agent, env) 
 
