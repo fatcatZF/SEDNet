@@ -42,7 +42,7 @@ def main():
 
     args = parser.parse_args() 
 
-    allowed_envs = {"cartpole", "lunarlander", "hopper", 
+    allowed_envs = {"cartpole", "mountaincar", "lunarlander", "hopper", 
                     "halfcheetah", "humanoid"}
     
     allowed_policy_types = {"dqn", "ppo", "sac"}
