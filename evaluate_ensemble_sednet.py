@@ -20,7 +20,7 @@ from datetime import datetime
 from environment_util import make_env 
 
 #from drift_detectors import MLPDriftDetector
-from compose_ensemble import EnsembleMLPDriftDetector
+from compose_ensemble_sednet import EnsembleMLPDriftDetector
 
 
 
